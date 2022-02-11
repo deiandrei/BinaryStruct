@@ -5,7 +5,8 @@
 
 class ByteBuffer {
 	public:
-		ByteBuffer(byte1* buffer, uint4 size, bool copyBytes = false);
+		ByteBuffer(uint4 size = 0);
+		ByteBuffer(byte1* buffer, uint4 size);
 		~ByteBuffer();
 		
 		// Reader
@@ -49,7 +50,7 @@ class ByteBuffer {
 		template<typename T>
 		void Write(const T& data) {
 			if (sizeof(T) + mPosition > mSize) {
-				return; // TODO implement expanding
+				Expand((mPosition + sizeof(T)) - mSize);
 			}
 
 			memcpy(mByteContainer + mPosition, &data, sizeof(T));
@@ -60,7 +61,7 @@ class ByteBuffer {
 		void WriteArray(T* destStartPtr, uint4 count) {
 			if (count == 0) return;
 			if ((sizeof(T) * count + mPosition) > mSize) {
-				return; // TODO implement expanding
+				Expand((mPosition + (sizeof(T) * count)) - mSize);
 			}
 
 			memcpy(mByteContainer + mPosition, destStartPtr, sizeof(T) * count);
@@ -74,12 +75,20 @@ class ByteBuffer {
 		uint4 BytesRemaining() { return mSize - mPosition; }
 
 		byte1* Data() { return mByteContainer; }
+		void Expand(uint4 bytesToAdd);
+
+		void SavePosition() { mPositionHistory.push_back(mPosition); }
+		void RestorePosition() { mPosition = mPositionHistory.back(); mPositionHistory.pop_back(); }
+		void PreparePosition(uint4 newPos) { SavePosition(); mPosition = newPos; }
 
 		static bool GetBitFromByte(int bitId, const byte1& byte);
+		static void SetBitOfByte(int bitId, bool bit, byte1* byte);
 
 	private:
 		byte1* mByteContainer;
 		uint4 mPosition, mSize;
+
+		std::vector<uint4> mPositionHistory;
 
 };
 

@@ -12,6 +12,19 @@ void BinaryStruct::AddEntryImpl(const std::string& name, EType type, byte1* data
 	mEntries.insert({ name, entry });
 }
 
+void BinaryStruct::AddEntryArrayImpl(const std::string& name, byte1* data, uint4 elemCount, uint4 elemSize) {
+	if (HasEntry(name) || !elemSize) return;
+
+	Entry entry;
+	entry.Type = TYPE_ARRAY;
+	entry.DataSize = elemSize * elemCount + 4;
+	entry.Data = new byte1[entry.DataSize];
+	memcpy(entry.Data, &elemCount, sizeof(uint4));
+	if(elemCount) memcpy(entry.Data + sizeof(uint4), data, elemSize * elemCount);
+
+	mEntries.insert({ name, entry });
+}
+
 void BinaryStruct::AddEntry(const std::string& name, int value) {
 	AddEntryImpl(name, TYPE_INT, (byte1*)&value, sizeof(int));
 }
@@ -117,29 +130,14 @@ void BinaryStruct::Export(const std::string& file) {
 }
 
 std::pair<byte1*, uint4> BinaryStruct::Export() {
-	// calculate the entire size
-	uint4 size = 0;
-
-	//// calculate the BS header size
-	uint4 bs_dataSize = 4; // rowCount (4)
-	for (auto itr = mEntries.begin(); itr != mEntries.end(); ++itr) {
-		bs_dataSize += 8 + (uint4)itr->first.length(); // entryID (4) + stringLen(4) + stringLen (...)
-
-		size += 12 + itr->second.DataSize; // type + id + size + dataSize
-	}
-	////
-
-	size += 12 + bs_dataSize; // type + id + size + bs_dataSize
-
-	byte1* buffer = new byte1[size];
-	ByteBuffer* bb = new ByteBuffer(buffer, size);
+	ByteBuffer* bb = new ByteBuffer;
 
 	// write the BS header and then the data
 	std::map<std::string, uint4> idsMap; // map key string to unique id
 
 	bb->Write<uint4>(EType::TYPE_BINARYSTRUCT);
 	bb->Write<uint4>(mID);
-	bb->Write<uint4>(bs_dataSize);
+	bb->Write<uint4>(0); // temp size for now
 	bb->Write<uint4>((uint4)mEntries.size());
 	int entryCount = 0;
 	for (auto itr = mEntries.begin(); itr != mEntries.end(); ++itr) {
@@ -151,6 +149,11 @@ std::pair<byte1*, uint4> BinaryStruct::Export() {
 		idsMap.insert({ itr->first, entryCount });
 	}
 
+	// write the BS header size
+	bb->PreparePosition(8);
+	bb->Write<uint4>(bb->Size() - 12); // - (type + id + size)
+	bb->RestorePosition();
+
 	// write every entry and its data
 	for (auto itr = mEntries.begin(); itr != mEntries.end(); ++itr) {
 		bb->Write<uint4>(itr->second.Type);
@@ -159,5 +162,5 @@ std::pair<byte1*, uint4> BinaryStruct::Export() {
 		bb->WriteArray<byte1>(itr->second.Data, itr->second.DataSize);
 	}
 
-	return { buffer, size };
+	return { bb->Data(), bb->Size() };
 }
